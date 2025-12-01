@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define DATA_FILE "student_data.dat"
+
 #define MAX_NAME 50
 #define MAX_COURSE 30
 
@@ -24,7 +24,7 @@ void readLine(char* buffer, int size) {
     buffer[strcspn(buffer, "\n")] = '\0';
 }
 
-/* Add a new student record to the provided Student struct */
+/* Add a new student's record to the Student struct */
 void addStudentRecord(Student* newStudent) {
     char temp[64];
 
@@ -74,7 +74,7 @@ void applyPenaltyFee(Student* student) {
     updateOutstandingBalance(student);                   // ensure outstanding is current
     if (student->outstandingBalance > 0.0f) {
         float penalty = student->outstandingBalance * 0.05f;
-        student->outstandingBalance += penalty;          // add penalty to outstanding
+        student->outstandingBalance += penalty;          // add penalty to outstanding fee
         student->totalFee += penalty;                    // make penalty part of total due
         printf("Applied penalty %.2f to %s (Roll %d). New outstanding: %.2f\n",
                penalty, student->fullName, student->rollNumber, student->outstandingBalance);
@@ -292,6 +292,6 @@ int main(void) {
         }
     } while (userChoice != 6);
 
-    free(studentList);
+    free(studentList); // free allocated memory before exiting
     return 0;
 }
