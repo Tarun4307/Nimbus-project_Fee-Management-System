@@ -1,0 +1,297 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define DATA_FILE "student_data.dat"
+#define MAX_NAME 50
+#define MAX_COURSE 30
+
+typedef struct {
+    int rollNumber;                      // student's roll number
+    char fullName[MAX_NAME];             // student's full name
+    char courseName[MAX_COURSE];         // course name
+    float totalFee;                      // total fee for the course
+    float feePaid;                       // cumulative paid so far
+    float outstandingBalance;            // derived: totalFee - feePaid (kept for display)
+} Student;
+
+/* Helper: safely read a line from stdin and remove the trailing newline */
+void readLine(char* buffer, int size) {
+    if (fgets(buffer, size, stdin) == NULL) {
+        buffer[0] = '\0';
+        return;
+    }
+    buffer[strcspn(buffer, "\n")] = '\0';
+}
+
+/* Add a new student record to the provided Student struct */
+void addStudentRecord(Student* newStudent) {
+    char temp[64];
+
+    printf("Enter Roll Number: ");
+    readLine(temp, sizeof(temp));
+    newStudent->rollNumber = atoi(temp);                // simple conversion; zero if invalid
+
+    printf("Enter Full Name: ");
+    readLine(newStudent->fullName, sizeof(newStudent->fullName)); // supports spaces
+
+    printf("Enter Course Name: ");
+    readLine(newStudent->courseName, sizeof(newStudent->courseName));
+
+    /* Read total fee with validation loop */
+    while (1) {
+        printf("Enter Total Fee: ");
+        readLine(temp, sizeof(temp));
+        newStudent->totalFee = (float)atof(temp);
+        if (newStudent->totalFee >= 0.0f) break;
+        printf("Invalid fee. Please enter a non-negative number.\n");
+    }
+
+    newStudent->feePaid = 0.0f;                          // initial paid amount zero
+    newStudent->outstandingBalance = newStudent->totalFee - newStudent->feePaid; // compute initial balance
+}
+
+/* Print a single student's fee receipt */
+void printFeeReceipt(const Student* student) {
+    printf("\n--- Fee Receipt ---\n");
+    printf("Roll No: %d\n", student->rollNumber);
+    printf("Name   : %s\n", student->fullName);
+    printf("Course : %s\n", student->courseName);
+    printf("Total  : %.2f\n", student->totalFee);
+    printf("Paid   : %.2f\n", student->feePaid);
+    printf("Balance: %.2f\n", student->outstandingBalance);
+    printf("-------------------\n");
+}
+
+/* Recompute outstanding balance from stored fields */
+void updateOutstandingBalance(Student* student) {
+    student->outstandingBalance = student->totalFee - student->feePaid;
+    if (student->outstandingBalance < 0.0f) student->outstandingBalance = 0.0f; // avoid negative display
+}
+
+/* Apply a penalty (5% of outstanding) if there is an outstanding balance */
+void applyPenaltyFee(Student* student) {
+    updateOutstandingBalance(student);                   // ensure outstanding is current
+    if (student->outstandingBalance > 0.0f) {
+        float penalty = student->outstandingBalance * 0.05f;
+        student->outstandingBalance += penalty;          // add penalty to outstanding
+        student->totalFee += penalty;                    // make penalty part of total due
+        printf("Applied penalty %.2f to %s (Roll %d). New outstanding: %.2f\n",
+               penalty, student->fullName, student->rollNumber, student->outstandingBalance);
+    } else {
+        printf("No outstanding for %s (Roll %d). No penalty applied.\n",
+               student->fullName, student->rollNumber);
+    }
+}
+
+/* Record a payment for one student */
+void recordPayment(Student* student) {
+    char temp[64];
+    float amount = 0.0f;
+
+    printf("Recording payment for Roll No %d, Name: %s\n", student->rollNumber, student->fullName);
+    printf("Current outstanding: %.2f\n", student->outstandingBalance);
+
+    while (1) {
+        printf("Enter payment amount: ");
+        readLine(temp, sizeof(temp));
+        amount = (float)atof(temp);
+        if (amount >= 0.0f) break;
+        printf("Invalid amount. Enter non-negative number.\n");
+    }
+
+    student->feePaid += amount;                          // increase paid amount
+    updateOutstandingBalance(student);                   // recompute outstanding
+    printf("Payment recorded. New paid: %.2f, New outstanding: %.2f\n",
+           student->feePaid, student->outstandingBalance);
+}
+
+/* Display aggregated revenue summary by course */
+void displayRevenueSummary(const Student* studentList, int numStudents) {
+    printf("\n=== Revenue Summary ===\n");
+    if (numStudents == 0) {
+        printf("No student records available.\n");
+        return;
+    }
+
+    /* Aggregate by course name using a simple dynamic array of course entries */
+    typedef struct {
+        char course[MAX_COURSE];
+        float collected;
+        float expected; /* totalFee + any penalties already added to totalFee */
+    } CourseAgg;
+
+    CourseAgg* agg = NULL;
+    int aggCount = 0;
+
+    for (int i = 0; i < numStudents; ++i) {
+        /* find course in agg */
+        int found = -1;
+        for (int j = 0; j < aggCount; ++j) {
+            if (strcmp(agg[j].course, studentList[i].courseName) == 0) {
+                found = j;
+                break;
+            }
+        }
+        if (found == -1) {
+            /* add new course aggregate */
+            CourseAgg* tmp = realloc(agg, (aggCount + 1) * sizeof(CourseAgg));
+            if (!tmp) { printf("Memory error.\n"); free(agg); return; }
+            agg = tmp;
+            strncpy(agg[aggCount].course, studentList[i].courseName, MAX_COURSE);
+            agg[aggCount].course[MAX_COURSE - 1] = '\0';
+            agg[aggCount].collected = studentList[i].feePaid;
+            agg[aggCount].expected  = studentList[i].totalFee;
+            aggCount++;
+        } else {
+            /* update existing aggregate */
+            agg[found].collected += studentList[i].feePaid;
+            agg[found].expected  += studentList[i].totalFee;
+        }
+    }
+
+    float totalCollected = 0.0f, totalExpected = 0.0f;
+    for (int i = 0; i < aggCount; ++i) {
+        printf("Course: %-20s Collected: %8.2f  Expected: %8.2f\n",
+               agg[i].course, agg[i].collected, agg[i].expected);
+        totalCollected += agg[i].collected;
+        totalExpected  += agg[i].expected;
+    }
+    printf("-----------------------------\n");
+    printf("Total Collected: %.2f\n", totalCollected);
+    printf("Total Expected : %.2f\n", totalExpected);
+
+    free(agg);
+}
+
+/* Save student array to file with count header */
+void saveStudentDataToFile(const Student* studentList, int numStudents) {
+    FILE* file = fopen(DATA_FILE, "wb");
+    if (!file) {
+        printf("Error opening file for write: %s\n", DATA_FILE);
+        return;
+    }
+    /* write number of students first so load can allocate correctly */
+    if (fwrite(&numStudents, sizeof(int), 1, file) != 1) {
+        printf("Error writing record count.\n");
+        fclose(file);
+        return;
+    }
+    if (numStudents > 0) {
+        if (fwrite(studentList, sizeof(Student), numStudents, file) != (size_t)numStudents) {
+            printf("Error writing student data.\n");
+        }
+    }
+    fclose(file);
+    printf("Student data saved to %s (%d records).\n", DATA_FILE, numStudents);
+}
+
+/* Load student array from file; caller must free returned list */
+void loadStudentDataFromFile(Student** studentList, int* numStudents) {
+    *studentList = NULL;
+    *numStudents = 0;
+    FILE* file = fopen(DATA_FILE, "rb");
+    if (!file) {
+        /* no file means first run: not an error */
+        return;
+    }
+
+    int count = 0;
+    if (fread(&count, sizeof(int), 1, file) != 1) {
+        fclose(file);
+        printf("Error reading record count. File may be corrupted.\n");
+        return;
+    }
+    if (count <= 0) {
+        fclose(file);
+        return;
+    }
+
+    Student* list = malloc(count * sizeof(Student));
+    if (!list) { fclose(file); printf("Memory allocation error.\n"); return; }
+
+    if (fread(list, sizeof(Student), count, file) != (size_t)count) {
+        printf("Error reading student records. File may be corrupted.\n");
+        free(list);
+        fclose(file);
+        return;
+    }
+
+    *studentList = list;
+    *numStudents = count;
+    fclose(file);
+}
+
+/* Find index of student by roll number; returns -1 if not found */
+int findStudentIndexByRoll(const Student* list, int count, int roll) {
+    for (int i = 0; i < count; ++i) {
+        if (list[i].rollNumber == roll) return i;
+    }
+    return -1;
+}
+
+int main(void) {
+    Student* studentList = NULL;
+    int numberOfStudents = 0;
+    int userChoice = 0;
+    char temp[64];
+
+    loadStudentDataFromFile(&studentList, &numberOfStudents);  // load existing data if any
+
+    do {
+        printf("\nSchool Fee Management System\n");
+        printf("1. Add New Student\n");
+        printf("2. Print All Fee Receipts\n");
+        printf("3. Record Payment for a Student\n");
+        printf("4. Apply Late Penalty to All (5%%)\n");
+        printf("5. Display Revenue Summary by Course\n");
+        printf("6. Save & Exit\n");
+        printf("Enter your choice: ");
+        readLine(temp, sizeof(temp));
+        userChoice = atoi(temp);
+
+        switch (userChoice) {
+            case 1: {
+                Student* tmp = realloc(studentList, (numberOfStudents + 1) * sizeof(Student));
+                if (!tmp) { printf("Memory allocation failed.\n"); break; }
+                studentList = tmp;
+                addStudentRecord(&studentList[numberOfStudents]);
+                updateOutstandingBalance(&studentList[numberOfStudents]);
+                numberOfStudents++;
+                break;
+            }
+            case 2:
+                for (int i = 0; i < numberOfStudents; ++i) {
+                    printFeeReceipt(&studentList[i]);
+                }
+                break;
+            case 3: {
+                printf("Enter roll number to record payment: ");
+                readLine(temp, sizeof(temp));
+                int roll = atoi(temp);
+                int idx = findStudentIndexByRoll(studentList, numberOfStudents, roll);
+                if (idx == -1) printf("Student with roll %d not found.\n", roll);
+                else recordPayment(&studentList[idx]);
+                break;
+            }
+            case 4:
+                for (int i = 0; i < numberOfStudents; ++i) {
+                    applyPenaltyFee(&studentList[i]);
+                }
+                break;
+            case 5:
+                displayRevenueSummary(studentList, numberOfStudents);
+                break;
+            case 6:
+                saveStudentDataToFile(studentList, numberOfStudents);
+                printf("Exiting program.\n");
+                break;
+            default:
+                printf("Invalid choice. Try again.\n");
+                break;
+        }
+    } while (userChoice != 6);
+
+    free(studentList);
+    return 0;
+}
